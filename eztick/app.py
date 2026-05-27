@@ -3,6 +3,7 @@ import json
 import os
 import webbrowser
 
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
@@ -64,9 +65,17 @@ class TaskItem(ListItem):
     def compose(self):
         title = self.task_data.get("title", "")
         dt = parse_due(self.task_data.get("dueDate", ""))
-        date_str = f"[{dt.day:02d}-{dt.month:02d}] " if dt else ""
-        marker = "\u25cf " if self._selected else ""
-        yield Label(f"{marker}{date_str}{title}")
+        text = Text()
+        if self._selected:
+            text.append("\u25cf ")
+        if dt:
+            overdue = dt.date() < datetime.date.today()
+            text.append(
+                f"[{dt.day:02d}-{dt.month:02d}] ",
+                style="orange1" if overdue else "",
+            )
+        text.append(title)
+        yield Label(text)
 
 
 SETUP_INSTRUCTIONS = """
