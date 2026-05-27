@@ -1,4 +1,4 @@
-from .app import EZTickApp
+from eztick.app import EZTickApp
 
 
 def main():
