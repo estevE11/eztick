@@ -24,6 +24,24 @@ CONFIG_DIR = os.path.expanduser("~/.config/eztick")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 
 
+def parse_due(raw: str) -> datetime.datetime | None:
+    if not raw:
+        return None
+    norm = raw.replace("Z", "+0000")
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z"):
+        try:
+            return datetime.datetime.strptime(norm, fmt).astimezone()
+        except ValueError:
+            continue
+    return None
+
+
+def format_due(date: datetime.date) -> str:
+    local_tz = datetime.datetime.now().astimezone().tzinfo
+    midnight = datetime.datetime.combine(date, datetime.time(0, 0), tzinfo=local_tz)
+    return midnight.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+
 def load_config():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE) as f:
@@ -45,12 +63,8 @@ class TaskItem(ListItem):
 
     def compose(self):
         title = self.task_data.get("title", "")
-        due = self.task_data.get("dueDate", "")
-        if due:
-            yyyy, mm, dd = due[:10].split("-")
-            date_str = f"[{dd}-{mm}] "
-        else:
-            date_str = ""
+        dt = parse_due(self.task_data.get("dueDate", ""))
+        date_str = f"[{dt.day:02d}-{dt.month:02d}] " if dt else ""
         marker = "\u25cf " if self._selected else ""
         yield Label(f"{marker}{date_str}{title}")
 
@@ -173,12 +187,10 @@ class TaskEditScreen(Screen):
     def compose(self):
         title = self._edit_task.get("title", "") if self._edit_task else ""
         due = ""
-        if self._edit_task and self._edit_task.get("dueDate"):
-            try:
-                y, m, d = self._edit_task["dueDate"][:10].split("-")
-                due = f"{d}-{m}"
-            except ValueError:
-                pass
+        if self._edit_task:
+            dt = parse_due(self._edit_task.get("dueDate", ""))
+            if dt:
+                due = f"{dt.day:02d}-{dt.month:02d}"
         yield Vertical(
             Static("New Task" if self.is_new else "Edit Task", classes="login-title"),
             Input(value=title, placeholder="Task title", id="title-input"),
@@ -220,7 +232,7 @@ class TaskEditScreen(Screen):
             if parsed is None:
                 self.notify("Date must be DD-MM", severity="error")
                 return
-            due_date = f"{parsed.isoformat()}T00:00:00+0000"
+            due_date = format_due(parsed)
         try:
             client = self.app.client
             if self.is_new:
@@ -309,7 +321,10 @@ class MainScreen(Screen):
         self.rebuild_list()
 
     def _sort_tasks(self):
-        self.tasks.sort(key=lambda t: (0, t["dueDate"]) if t.get("dueDate") else (1, ""))
+        def key(t):
+            dt = parse_due(t.get("dueDate", ""))
+            return (0, dt.date()) if dt else (1, datetime.date.max)
+        self.tasks.sort(key=key)
 
     def rebuild_list(self):
         lv = self.query_one("#task-list", ListView)
