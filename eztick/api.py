@@ -134,9 +134,9 @@ class TickTickClient:
             "POST",
             f"/open/v1/project/{project_id}/task/{task_id}/complete",
         )
-        if resp.status_code != 200:
+        if resp.status_code not in (200, 204):
             raise TickTickError(f"Failed to complete task ({resp.status_code})")
-        return resp.json()
+        return {}
 
     def uncomplete_task(self, project_id: str, task_id: str) -> dict:
         resp = self._request(
