@@ -1,3 +1,4 @@
+import calendar as _cal
 import datetime
 import json
 import os
@@ -6,7 +7,7 @@ import webbrowser
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.screen import Screen
+from textual.screen import ModalScreen, Screen
 from textual.widgets import (
     Button,
     Footer,
@@ -288,6 +289,78 @@ class TaskEditScreen(Screen):
         return candidate
 
 
+_WEEK_DAYS_HEADER = "Mo Tu We Th Fr Sa Su"
+
+
+class CalendarModal(ModalScreen):
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close"),
+        Binding("j", "scroll_fwd", "", show=False),
+        Binding("k", "scroll_back", "", show=False),
+        Binding("down", "scroll_fwd", "", show=False),
+        Binding("up", "scroll_back", "", show=False),
+    ]
+
+    def __init__(self):
+        super().__init__()
+        today = datetime.date.today()
+        self._start = today - datetime.timedelta(days=today.weekday())
+
+    def compose(self):
+        title, grid = self._build_content()
+        yield Vertical(
+            Static(title, id="cal-title"),
+            Static(_WEEK_DAYS_HEADER, id="cal-days"),
+            Static(grid, id="cal-grid"),
+            id="cal-box",
+        )
+
+    def _build_content(self):
+        today = datetime.date.today()
+        weeks = [
+            [self._start + datetime.timedelta(days=w * 7 + d) for d in range(7)]
+            for w in range(5)
+        ]
+        all_days = [d for w in weeks for d in w]
+
+        months_seen = []
+        seen_keys: set = set()
+        for d in all_days:
+            key = (d.year, d.month)
+            if key not in seen_keys:
+                seen_keys.add(key)
+                months_seen.append(d.month)
+        title = " - ".join(_cal.month_name[m] for m in months_seen)
+
+        grid_lines = []
+        for week in weeks:
+            parts = []
+            for i, day in enumerate(week):
+                if i > 0:
+                    parts.append(" ")
+                day_str = f"{day.day:2d}"
+                if day == today:
+                    parts.append(f"[bold reverse]{day_str}[/bold reverse]")
+                else:
+                    parts.append(day_str)
+            grid_lines.append("".join(parts))
+
+        return title, "\n".join(grid_lines)
+
+    def _refresh_calendar(self):
+        title, grid = self._build_content()
+        self.query_one("#cal-title", Static).update(title)
+        self.query_one("#cal-grid", Static).update(grid)
+
+    def action_scroll_fwd(self):
+        self._start += datetime.timedelta(weeks=1)
+        self._refresh_calendar()
+
+    def action_scroll_back(self):
+        self._start -= datetime.timedelta(weeks=1)
+        self._refresh_calendar()
+
+
 class MainScreen(Screen):
     BINDINGS = [
         Binding("j", "move_down", "Down", show=True, priority=True),
@@ -298,6 +371,7 @@ class MainScreen(Screen):
         Binding("n", "new_task", "New", show=True),
         Binding("r", "refresh", "Refresh", show=True),
         Binding("ctrl+z", "undo", "Undo", show=True),
+        Binding("c", "calendar", "Calendar", show=True, priority=True),
         Binding("q", "quit", "Quit", show=True),
     ]
 
@@ -459,6 +533,10 @@ class MainScreen(Screen):
         self.rebuild_list()
         self.notify("Undone!")
 
+    def action_calendar(self):
+        self.app.push_screen(CalendarModal())
+
+
 class EZTickApp(App):
     CSS = """
     Screen {
@@ -504,6 +582,23 @@ class EZTickApp(App):
     }
     ListView:focus-within {
         border: none;
+    }
+    CalendarModal {
+        align: center middle;
+    }
+    #cal-box {
+        width: 26;
+        height: auto;
+        border: solid $primary;
+        padding: 1 2;
+        background: $panel;
+    }
+    #cal-title {
+        text-align: center;
+        text-style: bold;
+    }
+    #cal-days {
+        color: $text-muted;
     }
     """
 
